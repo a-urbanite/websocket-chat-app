@@ -2,7 +2,7 @@
   "name": "chat-app",
   "version": "1.0.0",
   "description": "realtime chat app with rooms",
-  "main": "server.js",
+  "main": "./server/server.js",
   "scripts": {
    "start": "node server",
    "dev": "nodemon server"

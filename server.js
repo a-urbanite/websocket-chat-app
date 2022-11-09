@@ -1,40 +1,68 @@
-import express from 'express';
-import path, { join } from 'path';
-import {fileURLToPath} from 'url';
-import http from 'http'
-import { Server } from 'socket.io';
-import { formatMessage } from './utils/messages.js';
+import express from "express";
+import path, { join } from "path";
+import { fileURLToPath } from "url";
+import http from "http";
+import { Server } from "socket.io";
+import { formatMessage } from "./utils/messages.js";
+import { createUser, getCurrentUser, getRoomUsers, userLeave } from "./utils/user.js";
 
 const app = express();
-const httpserver = http.createServer(app)
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const httpserver = http.createServer(app);
 const io = new Server(httpserver);
 
-app.use(express.static(join(__dirname, 'public')))
-const botName = "chatApp bot"
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+app.use(express.static(join(__dirname, "client")));
 
-io.on('connection', (socket) => {
-  console.log("New websocket connection");
+const botName = "chatApp bot";
 
-  //welcome current user
-  socket.emit('message', formatMessage(botName ,"Welcome to the chat app!") )  //message to current user
+io.on("connection", (socket) => {
 
-  //broadcast message on connect
-  socket.broadcast.emit('message', formatMessage(botName , "User has joined the chat"))  //message to everone except current user
+  socket.on("joinRoom", ({ username, room }) => {
 
-  //message on disconnect
-  socket.on('disconnect', () => {
-    io.emit('message', formatMessage(botName , "User has left the chat")) //message to everyone
-  })
+    //creates user
+    const user = createUser(socket.id, username, room);
+
+    //add user to room
+    socket
+      .join(user.room)
+
+    //message to current user
+    socket
+      .emit("message", formatMessage(botName, "Welcome to the chat app!")); 
+
+    //broadcast message to everyone else in the room
+    socket.broadcast
+      .to(user.room)
+      .emit("message", formatMessage(botName, `${user.userName} has joined the chat`));
+
+    // sends updates roomUserlist and roomName to frontend
+    io
+      .to(user.room)
+      .emit('roomUsers', {room: user.room, users:getRoomUsers(user.room)})
+  });
 
   //receive and transmit userMessage
-  socket.on('chatMessage', msg => {
-    io.emit('message', formatMessage("USER" ,  msg))
-  })
-})
+  socket.on("chatMessage", (msg) => {
+    const user = getCurrentUser(socket.id);
+    io
+      .to(user.room)
+      .emit("message", formatMessage(user.userName, msg));
+  });
 
-
+  //message on disconnect
+  socket.on("disconnect", () => {
+    const user = userLeave(socket.id);
+    if (user) {
+      io
+        .to(user.room)
+        .emit("message", formatMessage(botName, `${user.userName} has left the chat`)) //message to everyone
+        
+      io 
+        .emit('roomUsers', {room: user.room, users: getRoomUsers(user.room)});
+    }
+  });
+});
 
 const PORT = 3000 || process.env.PORT;
 
